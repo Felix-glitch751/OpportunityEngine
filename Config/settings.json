@@ -1,0 +1,6 @@
+{
+  "notification_threshold": 50,
+  "scan_interval_minutes": 5,
+  "telegram_enabled": true,
+  "save_low_probability": true
+}
