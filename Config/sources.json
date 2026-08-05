@@ -1,26 +1,14 @@
 [
   {
-    "name": "Mercado Pago Chile",
-    "url": "",
-    "country": "CL",
-    "category": "cashback",
-    "priority": 10,
-    "active": true
-  },
-  {
-    "name": "Tenpo",
-    "url": "",
-    "country": "CL",
-    "category": "fintech",
-    "priority": 9,
-    "active": true
-  },
-  {
-    "name": "MACH",
-    "url": "",
-    "country": "CL",
-    "category": "fintech",
-    "priority": 9,
-    "active": true
+    "id": "test-rss",
+    "name": "Fuente RSS de prueba",
+    "type": "rss",
+    "url": "https://feeds.bbci.co.uk/news/technology/rss.xml",
+    "country": "INT",
+    "category": "technology",
+    "active": true,
+    "default_score": 55,
+    "default_probability": 55,
+    "max_items": 3
   }
 ]
