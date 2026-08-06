@@ -1,3 +1,4 @@
+from App.advisor import OpportunityAdvisor
 from App.database import OpportunityDatabase
 from App.models import Opportunity
 from App.notifier import TelegramNotifier
@@ -12,11 +13,13 @@ class OpportunityProcessor:
         self,
         threshold: float = 50.0,
     ) -> None:
+        self.advisor = OpportunityAdvisor()
         self.threshold = threshold
         self.database = OpportunityDatabase()
         self.notifier = TelegramNotifier()
 
     def process(self, opportunity: Opportunity) -> str:
+        opportunity = self.advisor.enrich(opportunity)
         opportunity.validate()
 
         was_saved = self.database.save(

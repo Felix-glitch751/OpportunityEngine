@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from App.page_collector import PageCollector
 from App.collector import BaseCollector
 from App.html_collector import HTMLCollector
 from App.rss_collector import RSSCollector
@@ -125,6 +126,23 @@ class SourceManager:
                 ),
                 max_items=int(
                     source.get("max_items", 10)
+                ),
+            )            
+        if source_type == "page":
+            return PageCollector(
+                source_id=source["id"],
+                source_name=source["name"],
+                url=source["url"],
+                country=source.get("country", "INT"),
+                category=source.get(
+                    "category",
+                    "general",
+                ),
+                source_trust=float(
+                    source.get("source_trust", 60)
+                ),
+                max_items=int(
+                    source.get("max_items", 20)
                 ),
             )
         print(

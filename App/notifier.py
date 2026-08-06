@@ -10,8 +10,6 @@ load_dotenv()
 
 
 class TelegramNotifier:
-    """Envía oportunidades calificadas al chat configurado."""
-
     def __init__(self) -> None:
         self.bot_token = os.getenv(
             "TELEGRAM_BOT_TOKEN",
@@ -24,17 +22,17 @@ class TelegramNotifier:
         ).strip()
 
     def is_configured(self) -> bool:
-        return bool(self.bot_token and self.chat_id)
+        return bool(
+            self.bot_token and self.chat_id
+        )
 
     def send_opportunity(
         self,
         opportunity: Opportunity,
     ) -> bool:
-
         if not self.is_configured():
             print(
-                "Telegram no está configurado. "
-                "Revisa el archivo .env."
+                "Telegram no está configurado."
             )
             return False
 
@@ -45,7 +43,9 @@ class TelegramNotifier:
 
         payload = {
             "chat_id": self.chat_id,
-            "text": self._build_message(opportunity),
+            "text": self._build_message(
+                opportunity
+            ),
             "disable_web_page_preview": False,
         }
 
@@ -77,6 +77,10 @@ class TelegramNotifier:
     def _build_message(
         opportunity: Opportunity,
     ) -> str:
+        advice = opportunity.raw_data.get(
+            "advice",
+            {},
+        )
 
         reward = (
             f"{opportunity.reward_amount:,.0f} "
@@ -88,29 +92,42 @@ class TelegramNotifier:
             f"{opportunity.currency}"
         )
 
-        requirements = "\n".join(
-            f"• {requirement}"
-            for requirement in opportunity.requirements
+        action = advice.get(
+            "recommended_action",
+            "Revisar las condiciones.",
         )
 
-        if not requirements:
-            requirements = (
-                "• Revisar condiciones en el enlace."
-            )
+        expiration = (
+            opportunity.expires_at
+            or "No informada"
+        )
 
         return (
             "🟢 OPPORTUNITY ENGINE\n\n"
             f"📌 {opportunity.title}\n\n"
+            f"⭐ Prioridad: "
+            f"{advice.get('priority', 'No calculada')}\n"
+            f"🎯 Factibilidad: "
+            f"{opportunity.score:.1f}%\n"
             f"🏢 Fuente: {opportunity.source_name}\n"
-            f"🌎 País: {opportunity.country}\n"
-            f"🏷 Categoría: {opportunity.category}\n"
+            f"🌎 País: {opportunity.country}\n\n"
             f"💰 Beneficio estimado: {reward}\n"
             f"💸 Costo requerido: {cost}\n"
-            f"⏱ Tiempo estimado: "
+            f"💵 Beneficio neto: "
+            f"{advice.get('net_reward', 0):,.0f} "
+            f"{opportunity.currency}\n"
+            f"📈 ROI: "
+            f"{advice.get('roi_level', 'No determinado')}\n"
+            f"⏱ Tiempo requerido: "
             f"{opportunity.estimated_minutes} min\n"
-            f"🎯 Factibilidad: "
-            f"{opportunity.score:.1f}%\n\n"
-            f"Objetivo:\n"
-            f"{requirements}\n\n"
+            f"🧩 Dificultad: "
+            f"{advice.get('difficulty', 'No determinada')}\n\n"
+            f"📅 Expira: {expiration}\n"
+            f"⏳ Tiempo restante: "
+            f"{advice.get('time_remaining', 'No informado')}\n"
+            f"🚨 Urgencia: "
+            f"{advice.get('urgency', 'No informada')}\n\n"
+            f"📱 Acción recomendada:\n"
+            f"{action}\n\n"
             f"🔗 {opportunity.url}"
         )
