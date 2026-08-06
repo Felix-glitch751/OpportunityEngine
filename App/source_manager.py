@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from App.collector import BaseCollector
+from App.html_collector import HTMLCollector
 from App.rss_collector import RSSCollector
 
 
@@ -101,7 +102,31 @@ class SourceManager:
                     )
                 ),
             )
+        if source_type == "html":
+            selectors = source.get("selectors", {})
 
+            return HTMLCollector(
+                source_id=source["id"],
+                source_name=source["name"],
+                url=source["url"],
+                country=source.get("country", "INT"),
+                category=source.get(
+                    "category",
+                    "general",
+                ),
+                item_selector=selectors["item"],
+                title_selector=selectors["title"],
+                link_selector=selectors["link"],
+                description_selector=selectors.get(
+                    "description"
+                ),
+                source_trust=float(
+                    source.get("source_trust", 60)
+                ),
+                max_items=int(
+                    source.get("max_items", 10)
+                ),
+            )
         print(
             "Tipo de fuente no compatible: "
             f"{source_type}"
