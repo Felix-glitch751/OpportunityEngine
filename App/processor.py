@@ -22,6 +22,47 @@ class OpportunityProcessor:
         opportunity = self.advisor.enrich(opportunity)
         opportunity.validate()
 
+        blocked_terms = [
+            "casino",
+            "apuesta",
+            "rollover",
+            "wagering",
+            "depósito obligatorio",
+            "deposito obligatorio",
+            "invertir",
+            "inversión",
+            "inversion",
+        ]
+
+        full_text = (
+            f"{opportunity.title} "
+            f"{opportunity.description}"
+        ).lower()
+
+        requires_forced_payment = (
+            opportunity.required_cost > 0
+            and not any(
+                term in full_text
+                for term in [
+                    "cashback",
+                    "devolución",
+                    "devolucion",
+                    "reembolso",
+                ]
+            )
+        )
+
+        blocked = any(
+            term in full_text
+            for term in blocked_terms
+        )
+
+        if blocked or requires_forced_payment:
+            opportunity.score = min(
+                opportunity.score,
+                49,
+            )
+            
         was_saved = self.database.save(
             opportunity,
             threshold=self.threshold,
