@@ -92,7 +92,7 @@
     "country": "CL",
     "region": "CL",
     "category": "public_benefits",
-    "active": true,
+    "active": false
     "priority": 8,
     "source_trust": 98,
     "check_interval_minutes": 120,
