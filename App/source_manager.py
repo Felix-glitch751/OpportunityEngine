@@ -28,6 +28,71 @@ class SourceManager:
     ) -> list[BaseCollector]:
 
         sources = self._load_sources()
+
+        active_sources = [
+            source
+            for source in sources
+            if source.get("active", False)
+        ]
+
+        active_sources.sort(
+            key=lambda source: source.get(
+                "priority",
+                0,
+            ),
+            reverse=True,
+        )
+
+        collectors: list[BaseCollector] = []
+
+        for source in active_sources:
+            collector = self._build_collector(source)
+
+            if collector is None:
+                continue
+
+            collector.priority = int(
+                source.get("priority", 0)
+            )
+
+            collector.check_interval_minutes = int(
+                source.get(
+                    "check_interval_minutes",
+                    60,
+                )
+            )
+
+            collector.source_trust = float(
+                source.get(
+                    "source_trust",
+                    60,
+                )
+            )
+
+            collector.monetization_type = source.get(
+                "monetization_type",
+                "unknown",
+            )
+
+            collector.requires_login = bool(
+                source.get(
+                    "requires_login",
+                    False,
+                )
+            )
+
+            collector.requires_payment = bool(
+                source.get(
+                    "requires_payment",
+                    False,
+                )
+            )
+
+            collectors.append(collector)
+
+        return collectors
+
+        sources = self._load_sources()
         collectors: list[BaseCollector] = []
 
         for source in sources:

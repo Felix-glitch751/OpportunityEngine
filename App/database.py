@@ -66,6 +66,24 @@ class OpportunityDatabase:
 
             connection.execute(
                 """
+                CREATE INDEX IF NOT EXISTS idx_opportunities_score
+                ON opportunities(score)
+                """
+            )
+
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS source_state (
+                    source_id TEXT PRIMARY KEY,
+                    last_checked_at TEXT,
+                    last_status TEXT,
+                    consecutive_errors INTEGER DEFAULT 0
+                )
+                """
+
+            )
+            connection.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_opportunities_queue
                 ON opportunities(queue)
                 """
@@ -209,6 +227,72 @@ class OpportunityDatabase:
 
         return bool(row and row["notified"])
 
+    def get_source_state(
+        self,
+        source_id: str,
+    ) -> dict | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    source_id,
+                    last_checked_at,
+                    last_status,
+                    consecutive_errors
+                FROM source_state
+                WHERE source_id = ?
+                """,
+                (source_id,),
+            ).fetchone()
+
+        if row is None:
+            return None
+
+        return dict(row)
+
+    def update_source_state(
+        self,
+        source_id: str,
+        checked_at: str,
+        status: str,
+    ) -> None:
+        previous = self.get_source_state(source_id)
+
+        if status == "ok":
+            consecutive_errors = 0
+        else:
+            consecutive_errors = (
+                previous["consecutive_errors"] + 1
+                if previous
+                else 1
+            )
+
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO source_state (
+                    source_id,
+                    last_checked_at,
+                    last_status,
+                    consecutive_errors
+                )
+                VALUES (?, ?, ?, ?)
+
+                ON CONFLICT(source_id)
+                DO UPDATE SET
+                    last_checked_at = excluded.last_checked_at,
+                    last_status = excluded.last_status,
+                    consecutive_errors =
+                        excluded.consecutive_errors
+                """,
+                (
+                    source_id,
+                    checked_at,
+                    status,
+                    consecutive_errors,
+                ),
+            )
+            
     def count_all(self) -> int:
         with self._connect() as connection:
             row = connection.execute(

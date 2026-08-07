@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 from App.processor import OpportunityProcessor
 from App.source_manager import SourceManager
@@ -9,6 +10,7 @@ class EngineReport:
     sources_loaded: int = 0
     sources_completed: int = 0
     sources_failed: int = 0
+    sources_skipped: int = 0
 
     opportunities_collected: int = 0
     opportunities_notified: int = 0
@@ -20,21 +22,71 @@ class EngineReport:
 
 
 class OpportunityEngine:
-    """
-    Coordina todo el flujo:
 
-    fuentes -> colectores -> oportunidades ->
-    base de datos -> clasificación -> Telegram
-    """
+    def __init__(
+        self,
+        threshold: float = 50.0,
+    ) -> None:
 
-    def __init__(self, threshold: float = 50.0) -> None:
         self.threshold = threshold
+
         self.source_manager = SourceManager()
+
         self.processor = OpportunityProcessor(
             threshold=self.threshold,
         )
 
+    def _should_check_source(
+        self,
+        collector,
+    ) -> bool:
+
+        state = self.processor.database.get_source_state(
+            collector.source_id
+        )
+
+        if state is None:
+            return True
+
+        last_checked_at = state.get(
+            "last_checked_at"
+        )
+
+        if not last_checked_at:
+            return True
+
+        try:
+            last_checked = datetime.fromisoformat(
+                last_checked_at.replace(
+                    "Z",
+                    "+00:00",
+                )
+            )
+
+        except ValueError:
+            return True
+
+        if last_checked.tzinfo is None:
+            last_checked = last_checked.replace(
+                tzinfo=timezone.utc
+            )
+
+        now = datetime.now(timezone.utc)
+
+        elapsed_minutes = (
+            now - last_checked
+        ).total_seconds() / 60
+
+        interval = getattr(
+            collector,
+            "check_interval_minutes",
+            60,
+        )
+
+        return elapsed_minutes >= interval
+
     def run_once(self) -> EngineReport:
+
         report = EngineReport()
 
         collectors = (
@@ -44,6 +96,20 @@ class OpportunityEngine:
         report.sources_loaded = len(collectors)
 
         for collector in collectors:
+
+            if not self._should_check_source(
+                collector
+            ):
+                report.sources_skipped += 1
+
+                print(
+                    f"\nSaltando fuente: "
+                    f"{collector.source_name} "
+                    f"(todavía no corresponde revisar)"
+                )
+
+                continue
+
             print(
                 f"\nConsultando fuente: "
                 f"{collector.source_name}"
@@ -52,7 +118,16 @@ class OpportunityEngine:
             try:
                 opportunities = collector.collect()
 
+                self.processor.database.update_source_state(
+                    source_id=collector.source_id,
+                    checked_at=datetime.now(
+                        timezone.utc
+                    ).isoformat(),
+                    status="ok",
+                )
+
                 report.sources_completed += 1
+
                 report.opportunities_collected += len(
                     opportunities
                 )
@@ -63,23 +138,36 @@ class OpportunityEngine:
                 )
 
             except Exception as error:
+
                 report.sources_failed += 1
 
                 error_message = (
                     f"{collector.source_name}: "
-                    f"{type(error).__name__}: {error}"
+                    f"{type(error).__name__}: "
+                    f"{error}"
                 )
 
-                report.errors.append(error_message)
+                report.errors.append(
+                    error_message
+                )
 
                 print(
                     "Error consultando la fuente: "
                     f"{error_message}"
                 )
 
+                self.processor.database.update_source_state(
+                    source_id=collector.source_id,
+                    checked_at=datetime.now(
+                        timezone.utc
+                    ).isoformat(),
+                    status="error",
+                )
+
                 continue
 
             for opportunity in opportunities:
+
                 try:
                     result = self.processor.process(
                         opportunity
@@ -96,10 +184,16 @@ class OpportunityEngine:
                     )
 
                 except Exception as error:
-                    report.errors.append(
+
+                    error_message = (
                         f"{collector.source_name} / "
                         f"{opportunity.title}: "
-                        f"{type(error).__name__}: {error}"
+                        f"{type(error).__name__}: "
+                        f"{error}"
+                    )
+
+                    report.errors.append(
+                        error_message
                     )
 
                     print(
@@ -128,7 +222,10 @@ class OpportunityEngine:
             report.notification_failures += 1
 
 
-def print_report(report: EngineReport) -> None:
+def print_report(
+    report: EngineReport,
+) -> None:
+
     print("\n" + "=" * 52)
     print("          OPPORTUNITY ENGINE - REPORTE")
     print("=" * 52)
@@ -139,8 +236,13 @@ def print_report(report: EngineReport) -> None:
     )
 
     print(
-        f"Fuentes completadas........... "
+        f"Fuentes revisadas............. "
         f"{report.sources_completed}"
+    )
+
+    print(
+        f"Fuentes omitidas.............. "
+        f"{report.sources_skipped}"
     )
 
     print(
