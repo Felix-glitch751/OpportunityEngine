@@ -5,6 +5,7 @@ from App.page_collector import PageCollector
 from App.collector import BaseCollector
 from App.html_collector import HTMLCollector
 from App.rss_collector import RSSCollector
+from App.controlled_test_collector import ControlledTestCollector
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -208,6 +209,20 @@ class SourceManager:
                 ),
                 max_items=int(
                     source.get("max_items", 20)
+                ),
+            )
+        if source_type == "controlled_test":
+            return ControlledTestCollector(
+                source_id=source["id"],
+                source_name=source["name"],
+                url=source["url"],
+                country=source.get(
+                    "country",
+                    "CL",
+                ),
+                category=source.get(
+                    "category",
+                    "test",
                 ),
             )
         print(
