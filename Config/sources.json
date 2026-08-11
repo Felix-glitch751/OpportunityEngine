@@ -100,5 +100,22 @@
     "requires_login": false,
     "requires_payment": false,
     "max_items": 30
+  },
+  {
+    "id": "controlled-cloud-test",
+    "name": "Opportunity Engine Cloud Test",
+    "type": "controlled_test",
+    "url": "https://example.com/opportunity-engine-cloud-test",
+    "country": "CL",
+    "region": "CL",
+    "category": "registration_bonus",
+    "active": true,
+    "priority": 100,
+    "source_trust": 100,
+    "check_interval_minutes": 1,
+    "monetization_type": "reward",
+    "requires_login": false,
+    "requires_payment": false,
+    "max_items": 1
   }
 ]

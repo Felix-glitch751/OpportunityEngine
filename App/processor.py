@@ -23,16 +23,13 @@ class OpportunityProcessor:
         opportunity.validate()
 
         blocked_terms = [
-            "casino",
-            "apuesta",
-            "rollover",
-            "wagering",
-            "depósito obligatorio",
-            "deposito obligatorio",
-            "invertir",
-            "inversión",
-            "inversion",
-        ]
+    "casino",
+    "apuesta",
+    "rollover",
+    "wagering",
+    "depósito obligatorio",
+    "deposito obligatorio",
+]
 
         full_text = (
             f"{opportunity.title} "

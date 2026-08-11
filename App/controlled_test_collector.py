@@ -30,7 +30,7 @@ class ControlledTestCollector(BaseCollector):
                 source_id=self.source_id,
                 source_name=self.source_name,
                 title="PRUEBA CONTROLADA - Bono gratuito por registro",
-                url="https://example.com/opportunity-engine-cloud-test",
+                url="https://example.com/opportunity-engine-cloud-test-v2",
                 country=self.country,
                 category=self.category,
                 description=(
