@@ -109,7 +109,7 @@
     "country": "CL",
     "region": "CL",
     "category": "registration_bonus",
-    "active": true,
+    "active": false,
     "priority": 100,
     "source_trust": 100,
     "check_interval_minutes": 1,
