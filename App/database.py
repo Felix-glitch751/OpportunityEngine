@@ -1,8 +1,10 @@
 import json
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 
 from App.models import Opportunity
+from App.normalizer import canonicalize_url, material_fingerprint
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -19,11 +21,21 @@ class OpportunityDatabase:
         self.database_path = database_path
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self._create_tables()
+        self._migrate_schema()
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self):
+        """Abre una conexión SQLite y garantiza su cierre al salir del bloque."""
         connection = sqlite3.connect(self.database_path)
         connection.row_factory = sqlite3.Row
-        return connection
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def _create_tables(self) -> None:
         with self._connect() as connection:
@@ -66,13 +78,6 @@ class OpportunityDatabase:
 
             connection.execute(
                 """
-                CREATE INDEX IF NOT EXISTS idx_opportunities_score
-                ON opportunities(score)
-                """
-            )
-
-            connection.execute(
-                """
                 CREATE TABLE IF NOT EXISTS source_state (
                     source_id TEXT PRIMARY KEY,
                     last_checked_at TEXT,
@@ -96,92 +101,96 @@ class OpportunityDatabase:
                 """
             )
 
+    def _ensure_column(self, table: str, column: str, definition: str) -> None:
+        with self._connect() as connection:
+            columns = {row["name"] for row in connection.execute(f"PRAGMA table_info({table})").fetchall()}
+            if column not in columns:
+                connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+    def _migrate_schema(self) -> None:
+        self._ensure_column("opportunities", "content_fingerprint", "TEXT")
+        self._ensure_column("opportunities", "last_seen_at", "TEXT")
+        self._ensure_column("opportunities", "seen_count", "INTEGER DEFAULT 1")
+        with self._connect() as connection:
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_opportunities_fingerprint ON opportunities(content_fingerprint)")
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_opportunities_last_seen ON opportunities(last_seen_at)")
+
     def save(
         self,
         opportunity: Opportunity,
         threshold: float = 50.0,
-    ) -> bool:
+    ) -> str:
         """
-        Guarda una oportunidad.
+        Guarda o actualiza una oportunidad.
 
-        Devuelve:
-        True  -> se guardó correctamente.
-        False -> ya existía una oportunidad con la misma URL.
+        Retorna: "new", "updated" o "duplicate".
+        Una misma URL puede volver a generar alerta solo cuando cambian
+        datos materiales (monto, porcentaje, tipo o expiración).
         """
-
         opportunity.validate()
+        opportunity.url = canonicalize_url(opportunity.url)
+        fingerprint = material_fingerprint(opportunity)
+        queue = "primary" if opportunity.should_notify(threshold) else "secondary"
 
-        queue = (
-            "primary"
-            if opportunity.should_notify(threshold)
-            else "secondary"
-        )
+        with self._connect() as connection:
+            existing = connection.execute(
+                "SELECT id, url, content_fingerprint, seen_count FROM opportunities WHERE url = ?",
+                (opportunity.url,),
+            ).fetchone()
 
-        try:
-            with self._connect() as connection:
+            # También evita el mismo beneficio publicado con URLs equivalentes/distintas.
+            if existing is None:
+                existing = connection.execute(
+                    "SELECT id, url, content_fingerprint, seen_count FROM opportunities WHERE source_id = ? AND content_fingerprint = ? ORDER BY detected_at DESC LIMIT 1",
+                    (opportunity.source_id, fingerprint),
+                ).fetchone()
+
+            if existing is not None and existing["content_fingerprint"] == fingerprint:
+                connection.execute(
+                    "UPDATE opportunities SET last_seen_at = ?, seen_count = COALESCE(seen_count, 1) + 1 WHERE id = ?",
+                    (opportunity.detected_at, existing["id"]),
+                )
+                return "duplicate"
+
+            values = (
+                opportunity.source_id, opportunity.source_name, opportunity.title,
+                opportunity.url, opportunity.country, opportunity.category,
+                opportunity.description, opportunity.currency, opportunity.reward_amount,
+                opportunity.required_cost, opportunity.estimated_minutes, opportunity.probability,
+                opportunity.score, json.dumps(opportunity.requirements, ensure_ascii=False),
+                json.dumps(opportunity.tags, ensure_ascii=False), opportunity.published_at,
+                opportunity.expires_at, opportunity.detected_at,
+                json.dumps(opportunity.raw_data, ensure_ascii=False), queue, fingerprint,
+                opportunity.detected_at,
+            )
+
+            if existing is not None:
                 connection.execute(
                     """
-                    INSERT INTO opportunities (
-                        source_id,
-                        source_name,
-                        title,
-                        url,
-                        country,
-                        category,
-                        description,
-                        currency,
-                        reward_amount,
-                        required_cost,
-                        estimated_minutes,
-                        probability,
-                        score,
-                        requirements,
-                        tags,
-                        published_at,
-                        expires_at,
-                        detected_at,
-                        raw_data,
-                        queue
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    UPDATE opportunities SET
+                        source_id=?, source_name=?, title=?, url=?, country=?, category=?,
+                        description=?, currency=?, reward_amount=?, required_cost=?,
+                        estimated_minutes=?, probability=?, score=?, requirements=?, tags=?,
+                        published_at=?, expires_at=?, detected_at=?, raw_data=?, queue=?,
+                        content_fingerprint=?, last_seen_at=?, seen_count=1, notified=0, status='updated'
+                    WHERE id=?
                     """,
-                    (
-                        opportunity.source_id,
-                        opportunity.source_name,
-                        opportunity.title,
-                        opportunity.url,
-                        opportunity.country,
-                        opportunity.category,
-                        opportunity.description,
-                        opportunity.currency,
-                        opportunity.reward_amount,
-                        opportunity.required_cost,
-                        opportunity.estimated_minutes,
-                        opportunity.probability,
-                        opportunity.score,
-                        json.dumps(
-                            opportunity.requirements,
-                            ensure_ascii=False,
-                        ),
-                        json.dumps(
-                            opportunity.tags,
-                            ensure_ascii=False,
-                        ),
-                        opportunity.published_at,
-                        opportunity.expires_at,
-                        opportunity.detected_at,
-                        json.dumps(
-                            opportunity.raw_data,
-                            ensure_ascii=False,
-                        ),
-                        queue,
-                    ),
+                    values + (existing["id"],),
                 )
+                return "updated"
 
-            return True
-
-        except sqlite3.IntegrityError:
-            return False
+            connection.execute(
+                """
+                INSERT INTO opportunities (
+                    source_id, source_name, title, url, country, category, description,
+                    currency, reward_amount, required_cost, estimated_minutes, probability,
+                    score, requirements, tags, published_at, expires_at, detected_at, raw_data,
+                    queue, content_fingerprint, last_seen_at, seen_count
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                """,
+                values,
+            )
+            return "new"
 
     def get_primary_queue(self) -> list[dict]:
         return self._get_by_queue("primary")

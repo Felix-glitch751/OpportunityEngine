@@ -209,7 +209,7 @@ class OpportunityEngine:
         result: str,
     ) -> None:
 
-        if result == "notified":
+        if result in {"notified", "notified_updated"}:
             report.opportunities_notified += 1
 
         elif result == "secondary":
